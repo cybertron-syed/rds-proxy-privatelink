@@ -46,3 +46,5 @@ resource "aws_iam_role_policy_attachment" "rds_proxy_policy_attach" {
   role       = aws_iam_role.rds_proxy_role.name
   policy_arn = aws_iam_policy.rds_proxy_policy.arn
 }
+
+# sg-087da1a472ae9b952
