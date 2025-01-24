@@ -3,31 +3,31 @@ provider "aws" {
   region = "us-east-1" # Specify your AWS region
 }
 
-# Create a VPC
-resource "aws_vpc" "main" {
+# Create a VPC -
+resource "aws_vpc" "main_vpc" {
   cidr_block = "10.0.0.0/16"
 }
 
-# Create subnets in different Availability Zones
-resource "aws_subnet" "subnet_a" {
-  vpc_id            = aws_vpc.main.id
+# Create subnets in different Availability Zones -
+resource "aws_subnet" "private_subnet_a" {
+  vpc_id            = aws_vpc.main_vpc.id
   cidr_block        = "10.0.1.0/24"
   availability_zone = "us-east-1a"
 }
-
-resource "aws_subnet" "subnet_b" {
-  vpc_id            = aws_vpc.main.id
+# -
+resource "aws_subnet" "private_subnet_b" {
+  vpc_id            = aws_vpc.main_vpc.id
   cidr_block        = "10.0.2.0/24"
   availability_zone = "us-east-1b"
 }
 
-# Create a security group for RDS
-resource "aws_security_group" "rds_sg" {
-  vpc_id = aws_vpc.main.id
+# Create a security group for RDS -
+resource "aws_security_group" "rds_security_group" {
+  vpc_id = aws_vpc.main_vpc.id
 
   ingress {
-    from_port   = 3306
-    to_port     = 3306
+    from_port   = 5432
+    to_port     = 5432
     protocol    = "tcp"
     cidr_blocks = ["10.0.0.0/16"]
   }
@@ -40,47 +40,46 @@ resource "aws_security_group" "rds_sg" {
   }
 }
 
-# Create an RDS instance
-resource "aws_db_instance" "hopper" {
-  allocated_storage    = 20
-  engine               = "mysql"
-  engine_version       = "8.0"
-  instance_class       = "db.t3.micro"
-  db_name              = "Test"
-  identifier           = "hopper-db"
-  username             = "admin"
-  password             = "password"
-  vpc_security_group_ids = [aws_security_group.rds_sg.id]
-  db_subnet_group_name = aws_db_subnet_group.main.name
+# Create an RDS PostgreSQL instance -
+resource "aws_db_instance" "hopper_postgres" {
+  allocated_storage      = 20
+  engine                 = "postgres"
+  engine_version         = "16.4"
+  instance_class         = "db.t3.micro"
+  db_name                = "HopperDB"
+  identifier             = "hopper-postgres-db"
+  username               = "db_admin"
+  password               = "securepassword123" # Replace with a secure password
+  vpc_security_group_ids = [aws_security_group.rds_security_group.id]
+  db_subnet_group_name   = aws_db_subnet_group.hopper_subnet_group.name
 
   skip_final_snapshot = true
 }
 
-# Create a DB subnet group
-resource "aws_db_subnet_group" "main" {
-  name       = "main"
-  subnet_ids = [aws_subnet.subnet_a.id, aws_subnet.subnet_b.id]
+# Create a DB subnet group -
+resource "aws_db_subnet_group" "hopper_subnet_group" {
+  name       = "hopper-db-subnet-group"
+  subnet_ids = [aws_subnet.private_subnet_a.id, aws_subnet.private_subnet_b.id]
 }
 
-# Create an RDS Proxy
-resource "aws_db_proxy" "rds_proxy" {
-  name                   = "hopper-proxy"
-  engine_family          = "MYSQL"
+# Create an RDS Proxy for PostgreSQL -
+resource "aws_db_proxy" "hopper_rds_proxy" {
+  name                   = "hopper-postgres-proxy"
+  engine_family          = "POSTGRESQL"
   role_arn               = aws_iam_role.rds_proxy_role.arn
-  vpc_security_group_ids = [aws_security_group.rds_sg.id]
-  vpc_subnet_ids         = [aws_subnet.subnet_a.id, aws_subnet.subnet_b.id]
+  vpc_security_group_ids = [aws_security_group.rds_security_group.id]
+  vpc_subnet_ids         = [aws_subnet.private_subnet_a.id, aws_subnet.private_subnet_b.id]
   require_tls            = true
 
   auth {
     auth_scheme = "SECRETS"
-    secret_arn  = aws_secretsmanager_secret.example.arn
+    secret_arn  = aws_secretsmanager_secret.postgres_secret.arn
   }
 }
 
-
-# Create an IAM role for RDS Proxy
+# Create an IAM role for RDS Proxy -
 resource "aws_iam_role" "rds_proxy_role" {
-  name = "rds-proxy-role"
+  name = "hopper-rds-proxy-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -96,49 +95,64 @@ resource "aws_iam_role" "rds_proxy_role" {
   })
 }
 
+# Create a Secrets Manager secret to store database credentials -
+resource "aws_secretsmanager_secret" "postgres_secret" {
+  name = "hopper-db-creds-v2"
 
-
-# Create a Secrets Manager secret to store database credentials
-resource "aws_secretsmanager_secret" "example" {
-  name = "db-credentials-env3"
-
+  # secret_string = jsonencode({
+  #   username = "admin"
+  #   password = "securepassword123" # Replace with a secure password
+  # })
 }
 
-resource "aws_iam_role_policy_attachment" "rds_proxy_policy" {
+# Attach the necessary policy to the IAM role -
+resource "aws_iam_role_policy_attachment" "rds_proxy_policy_attachment" {
   role       = aws_iam_role.rds_proxy_role.name
-  policy_arn = "arn:aws:iam::aws:policy/CustomRDSProxyServiceRolePolicy"
+  policy_arn = "arn:aws:iam::aws:policy/AmazonRDSFullAccess"
 }
 
-
-# Create a Network Load Balancer
-resource "aws_lb" "nlb" {
-  name               = "example-nlb"
+# Create a Network Load Balancer - 
+resource "aws_lb" "rds_nlb" {
+  name               = "hopper-nlb"
   internal           = true
   load_balancer_type = "network"
-  subnets            = [aws_subnet.subnet_a.id, aws_subnet.subnet_b.id]
+  subnets            = [aws_subnet.private_subnet_a.id, aws_subnet.private_subnet_b.id]
 }
 
-# Create a target group for the NLB - ip
+# Create a target group for the NLB - instance -
 resource "aws_lb_target_group" "rds_proxy_tg" {
-  name        = "rds-proxy-tg"
-  port        = 3306
+  name        = "hopper-proxy-target-group"
+  port        = 5432
   protocol    = "TCP"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = aws_vpc.main_vpc.id
   target_type = "ip"
 }
 
-
-# Register the RDS Proxy with the target group
-resource "aws_lb_target_group_attachment" "rds_proxy_attachment" {
-  target_group_arn = aws_lb_target_group.rds_proxy_tg.arn
-  target_id        = aws_db_proxy.example.endpoint
-  port             = 3306
+# External data source to resolve the DNS name of the RDS Proxy to an IP address -
+data "external" "rds_proxy_ip" {
+  program = [
+    "bash", "-c", <<EOT
+      IP=$(dig +short ${aws_db_proxy.hopper_rds_proxy.endpoint} | grep -E '^[0-9]+(\.[0-9]+){3}$' | head -n 1)
+      if [ -z "$IP" ]; then
+        echo "{\"ip\": \"\"}"
+      else
+        echo "{\"ip\": \"$IP\"}"
+      fi
+    EOT
+  ]
 }
 
-# Create a listener for the NLB
+# Attach the IP address to the NLB target group -
+resource "aws_lb_target_group_attachment" "rds_proxy_attachment" {
+  target_group_arn = aws_lb_target_group.rds_proxy_tg.arn
+  target_id        = data.external.rds_proxy_ip.result["ip"]  # IP address of the RDS Proxy
+  port             = 5432
+}
+
+# Create a listener for the NLB -
 resource "aws_lb_listener" "rds_proxy_listener" {
-  load_balancer_arn = aws_lb.nlb.arn
-  port              = 3306
+  load_balancer_arn = aws_lb.rds_nlb.arn
+  port              = 5432
   protocol          = "TCP"
   default_action {
     type             = "forward"
@@ -146,13 +160,18 @@ resource "aws_lb_listener" "rds_proxy_listener" {
   }
 }
 
-# Create a VPC Endpoint Service for the NLB
-resource "aws_vpc_endpoint_service" "rds_proxy_service" {
-  acceptance_required = false
-  network_load_balancer_arns = [aws_lb.nlb.arn]
+# Create a VPC Endpoint Service for the NLB -
+resource "aws_vpc_endpoint_service" "rds_proxy_endpoint_service" {
+  acceptance_required    = false
+  network_load_balancer_arns = [aws_lb.rds_nlb.arn]
 }
 
 # Output the service name for cross-account access
 output "vpc_endpoint_service_name" {
-  value = aws_vpc_endpoint_service.rds_proxy_service.service_name
+  value = aws_vpc_endpoint_service.rds_proxy_endpoint_service.service_name
+}
+
+# Fetch DNS name of RDS Proxy
+output "rds_proxy_dns_name" {
+  value = aws_db_proxy.hopper_rds_proxy.endpoint
 }
