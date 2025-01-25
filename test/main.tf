@@ -49,7 +49,7 @@ resource "aws_db_instance" "hopper_postgres" {
   db_name                = "HopperDB"
   identifier             = "hopper-postgres-db"
   username               = "db_admin"
-  password               = "securepassword123" # Replace with a secure password
+  password               = "securepostgres"
   vpc_security_group_ids = [aws_security_group.rds_security_group.id]
   db_subnet_group_name   = aws_db_subnet_group.hopper_subnet_group.name
 
@@ -101,7 +101,7 @@ resource "aws_secretsmanager_secret" "postgres_secret" {
 
   # secret_string = jsonencode({
   #   username = "admin"
-  #   password = "securepassword123" # Replace with a secure password
+  #   password = "securepostgres"
   # })
 }
 
@@ -145,7 +145,7 @@ data "external" "rds_proxy_ip" {
 # Attach the IP address to the NLB target group -
 resource "aws_lb_target_group_attachment" "rds_proxy_attachment" {
   target_group_arn = aws_lb_target_group.rds_proxy_tg.arn
-  target_id        = data.external.rds_proxy_ip.result["ip"]  # IP address of the RDS Proxy
+  target_id        = data.external.rds_proxy_ip.result["ip"]  
   port             = 5432
 }
 
