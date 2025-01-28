@@ -41,7 +41,7 @@ resource "aws_security_group" "rds_sg" {
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]  # Allow access from private subnets to DB
+    cidr_blocks = ["10.0.0.0/16"] 
   }
 
   egress {
@@ -203,7 +203,7 @@ resource "aws_cloudwatch_event_target" "lambda_target" {
 # Create the NLB Target Group attachment
 resource "aws_lb_target_group_attachment" "rds_proxy_attachment" {
   target_group_arn = aws_lb_target_group.rds_proxy_tg.arn
-  target_id        = aws_db_proxy.hopper_rds_proxy.endpoint  # This is the RDS Proxy DNS name
+  target_id        = aws_db_proxy.hopper_rds_proxy.endpoint 
   port             = 5432
 }
 
