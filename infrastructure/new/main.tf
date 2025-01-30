@@ -130,7 +130,7 @@ resource "aws_lambda_function" "update_target_group" {
   filename         = "main.zip"  # The zipped package that includes your Lambda code
   function_name    = "main"
   role             = aws_iam_role.lambda_exec_role.arn
-  handler          = "index.handler"
+  handler          = "main.lambda_handler"
   runtime          = "python3.8"
 
   environment {
@@ -165,16 +165,20 @@ resource "aws_iam_role_policy" "lambda_policy" {
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
-      {
-        Action = [
-          "elasticloadbalancing:DescribeTargetHealth",
-          "elasticloadbalancing:RegisterTargets",
-          "elasticloadbalancing:DeregisterTargets"
-        ],
-        Effect   = "Allow",
-        Resource = aws_lb_target_group.rds_proxy_tg.arn
-      },
-    ]
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "rds:DescribeDBInstances",
+        "elasticloadbalancing:DescribeTargetHealth",
+        "elasticloadbalancing:RegisterTargets",
+        "elasticloadbalancing:DeregisterTargets"
+      ],
+      "Resource": "*"
+    }
+  ]
   })
 }
 
